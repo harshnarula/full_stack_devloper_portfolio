@@ -959,13 +959,15 @@ export default function App() {
   return (
     <div className="font-sans bg-[#0b1120] min-h-screen">
       <Nav />
-      <Hero />
-      <TechStack />
-      <Experience />
-      <Projects />
-      <Activities />
-      <Contact />
-      <Footer />
+      <div className="pt-16 lg:pt-0">
+        <Hero />
+        <TechStack />
+        <Experience />
+        <Projects />
+        <Activities />
+        <Contact />
+        <Footer />
+      </div>
     </div>
   );
 }
