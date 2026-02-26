@@ -1,3 +1,3 @@
 User-agent: *
 Allow: /
-Sitemap: https://lawyer-portfolio-vercel.vercel.app/sitemap.xml
+Sitemap: https://my-portfolio-ten-beta-34.vercel.app/sitemap.xml
