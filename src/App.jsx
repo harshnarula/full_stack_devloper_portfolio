@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import emailjs from "@emailjs/browser";
 
 /* ─── DATA ─── */
 const data = {
@@ -231,12 +232,8 @@ const data = {
 function Nav() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  const isScrolling = useRef(false);
+  const boxRef = useRef(null);
 
   const links = [
     "About",
@@ -246,6 +243,39 @@ function Nav() {
     "Activities",
     "Contact",
   ];
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      isScrolling.current = true;
+
+      clearTimeout(isScrolling.currentTimeout);
+      isScrolling.currentTimeout = setTimeout(() => {
+        isScrolling.current = false;
+      }, 100);
+    };
+
+    const handleClickOutside = (event) => {
+      if (isScrolling.current) return;
+
+      if (boxRef.current && !boxRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("scroll", handleScroll, true);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, []);
 
   return (
     <nav
@@ -282,7 +312,10 @@ function Nav() {
       </div>
 
       {open && (
-        <div className="md:hidden bg-[#0f172a] px-6 pb-6 flex flex-col gap-4 text-slate-300">
+        <div
+          ref={boxRef}
+          className="md:hidden bg-[#0f172a] px-6 pb-6 flex flex-col gap-4 text-slate-300"
+        >
           {links.map((l) => (
             <a
               key={l}
@@ -782,20 +815,75 @@ function Activities() {
 }
 
 /* ─── CONTACT ─── */
-function Contact() {
+function Contact({ setGlobalBanner }) {
   const [form, setForm] = useState({
     name: "",
     email: "",
     subject: "",
     message: "",
   });
-  const [sent, setSent] = useState(false);
+
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+
+  const validate = () => {
+    let newErrors = {};
+
+    if (form.name.trim().length < 2) {
+      newErrors.name = "Name must be at least 2 characters.";
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email)) {
+      newErrors.email = "Enter a valid email address.";
+    }
+
+    if (form.message.trim().length < 10) {
+      newErrors.message = "Message must be at least 10 characters.";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setSent(true);
-    setTimeout(() => setSent(false), 4000);
-    setForm({ name: "", email: "", subject: "", message: "" });
+    setGlobalBanner(null);
+
+    if (!validate()) return;
+
+    setLoading(true);
+
+    emailjs
+      .send(
+        import.meta.env.VITE_EMAILJS_SERVICE_ID,
+        import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+        form,
+        import.meta.env.VITE_EMAILJS_PUBLIC_KEY,
+      )
+      .then(() => {
+        setGlobalBanner({
+          type: "success",
+          message:
+            "✅ Message sent successfully! I’ll get back to you within 24 hours.",
+        });
+
+        setForm({ name: "", email: "", subject: "", message: "" });
+        setErrors({});
+        setLoading(false);
+
+        setTimeout(() => setGlobalBanner(null), 4000);
+      })
+      .catch(() => {
+        setGlobalBanner({
+          type: "error",
+          message: "❌ Something went wrong. Please try again later.",
+        });
+
+        setLoading(false);
+
+        setTimeout(() => setGlobalBanner(null), 4000);
+      });
   };
 
   return (
@@ -815,125 +903,82 @@ function Contact() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-10">
-          {/* Info Panel */}
-          <div className="lg:col-span-2 space-y-6">
-            {[
-              { icon: "📧", label: "Email", val: data.email },
-              { icon: "📍", label: "Location", val: data.location },
-              { icon: "⚡", label: "GitHub", val: data.github },
-              { icon: "💼", label: "LinkedIn", val: data.linkedin },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="relative p-5 rounded-2xl bg-[#111827]/80 border border-slate-800 backdrop-blur-sm"
-              >
-                <div className="flex items-start gap-4">
-                  <span className="text-xl">{item.icon}</span>
-                  <div>
-                    <p className="text-xs font-mono text-slate-500 tracking-widest mb-1">
-                      {item.label}
-                    </p>
-                    {item.label === "GitHub" || item.label === "LinkedIn" ? (
-                      <a
-                        href={item.val}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label={`Visit Harsh Narula's ${item.label} profile`}
-                        className="text-sm text-blue-400 hover:text-blue-300 transition font-medium"
-                      >
-                        {item.label} Profile →
-                      </a>
-                    ) : (
-                      <p className="text-sm text-slate-300 break-all">
-                        {item.val}
-                      </p>
-                    )}
-                  </div>
-                </div>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Name + Email */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {["name", "email"].map((field) => (
+              <div key={field}>
+                <label className="block text-xs font-mono text-slate-500 tracking-widest mb-2 uppercase">
+                  {field}
+                </label>
+                <input
+                  type={field === "email" ? "email" : "text"}
+                  value={form[field]}
+                  onChange={(e) =>
+                    setForm({ ...form, [field]: e.target.value })
+                  }
+                  className={`w-full px-4 py-3 rounded-xl bg-[#111827] border text-slate-200 text-sm focus:outline-none transition ${
+                    errors[field]
+                      ? "border-red-500"
+                      : "border-slate-800 focus:border-blue-500/40"
+                  }`}
+                />
+                {errors[field] && (
+                  <p className="text-red-400 text-xs mt-1">{errors[field]}</p>
+                )}
               </div>
             ))}
-
-            {/* Status Card */}
-            <div className="relative p-5 rounded-2xl bg-[#111827]/80 border border-blue-500/20 backdrop-blur-sm">
-              <p className="text-xs font-mono text-blue-400 tracking-widest mb-3">
-                STATUS
-              </p>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
-                <span className="text-sm text-slate-300">
-                  Open to full-time & contract roles
-                </span>
-              </div>
-            </div>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="lg:col-span-3 space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              {["name", "email"].map((field) => (
-                <div key={field}>
-                  <label className="block text-xs font-mono text-slate-500 tracking-widest mb-2 uppercase">
-                    {field}
-                  </label>
-                  <input
-                    type={field === "email" ? "email" : "text"}
-                    placeholder={
-                      field === "name" ? "John Doe" : "john@example.com"
-                    }
-                    value={form[field]}
-                    onChange={(e) =>
-                      setForm({ ...form, [field]: e.target.value })
-                    }
-                    required
-                    className="w-full px-4 py-3 rounded-xl bg-[#111827] border border-slate-800 text-slate-200 text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500/40 transition"
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono text-slate-500 tracking-widest mb-2 uppercase">
-                Subject
-              </label>
-              <input
-                type="text"
-                placeholder="Project inquiry, collaboration..."
-                value={form.subject}
-                onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                required
-                className="w-full px-4 py-3 rounded-xl bg-[#111827] border border-slate-800 text-slate-200 text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500/40 transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono text-slate-500 tracking-widest mb-2 uppercase">
-                Message
-              </label>
-              <textarea
-                rows={5}
-                placeholder="Tell me about your project or idea..."
-                value={form.message}
-                onChange={(e) => setForm({ ...form, message: e.target.value })}
-                required
-                className="w-full px-4 py-3 rounded-xl bg-[#111827] border border-slate-800 text-slate-200 text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500/40 transition resize-none"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className={`w-full py-3.5 rounded-xl font-semibold text-sm transition-all ${
-                sent
-                  ? "bg-emerald-500 text-white"
-                  : "bg-blue-500 text-white hover:bg-blue-600 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30"
+          {/* Subject */}
+          <div>
+            <label className="block text-xs font-mono text-slate-500 tracking-widest mb-2 uppercase">
+              Subject (Optional)
+            </label>
+            <input
+              type="text"
+              value={form.subject}
+              onChange={(e) => setForm({ ...form, subject: e.target.value })}
+              className={`w-full px-4 py-3 rounded-xl bg-[#111827] border text-slate-200 text-sm focus:outline-none transition ${
+                errors.subject
+                  ? "border-red-500"
+                  : "border-slate-800 focus:border-blue-500/40"
               }`}
-            >
-              {sent
-                ? "✓ Message Sent! I’ll be in touch soon."
-                : "Send Message →"}
-            </button>
-          </form>
-        </div>
+            />
+            {errors.subject && (
+              <p className="text-red-400 text-xs mt-1">{errors.subject}</p>
+            )}
+          </div>
+
+          {/* Message */}
+          <div>
+            <label className="block text-xs font-mono text-slate-500 tracking-widest mb-2 uppercase">
+              Message
+            </label>
+            <textarea
+              rows={5}
+              value={form.message}
+              onChange={(e) => setForm({ ...form, message: e.target.value })}
+              className={`w-full px-4 py-3 rounded-xl bg-[#111827] border text-slate-200 text-sm focus:outline-none transition resize-none ${
+                errors.message
+                  ? "border-red-500"
+                  : "border-slate-800 focus:border-blue-500/40"
+              }`}
+            />
+            {errors.message && (
+              <p className="text-red-400 text-xs mt-1">{errors.message}</p>
+            )}
+          </div>
+
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3.5 rounded-xl font-semibold text-sm bg-blue-500 text-white hover:bg-blue-600 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30 transition disabled:opacity-60"
+          >
+            {loading ? "Sending..." : "Send Message →"}
+          </button>
+        </form>
       </div>
     </section>
   );
@@ -956,16 +1001,47 @@ function Footer() {
 
 /* ─── APP ─── */
 export default function App() {
+  const [globalBanner, setGlobalBanner] = useState(null);
+
   return (
-    <div className="font-sans bg-[#0b1120] min-h-screen">
+    <div className="font-sans bg-[#0b1120] min-h-screen relative">
+      {globalBanner && (
+        <div className="fixed top-6 right-6 z-[1000] animate-slideIn">
+          <div
+            className={`min-w-[300px] max-w-sm px-5 py-4 rounded-xl shadow-2xl backdrop-blur-md border text-sm font-medium transition-all
+        ${
+          globalBanner.type === "success"
+            ? "bg-emerald-500/10 border-emerald-400 text-emerald-400"
+            : "bg-red-500/10 border-red-400 text-red-400"
+        }
+      `}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <span>{globalBanner.message}</span>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setGlobalBanner(null)}
+                className="text-white/60 hover:text-white text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Nav />
+
       <div className="pt-16 lg:pt-0">
         <Hero />
         <TechStack />
         <Experience />
         <Projects />
         <Activities />
-        <Contact />
+
+        <Contact setGlobalBanner={setGlobalBanner} />
+
         <Footer />
       </div>
     </div>
